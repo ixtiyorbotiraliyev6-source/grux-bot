@@ -259,12 +259,15 @@ async def cmd_astats(message: Message):
     group_list = "\n".join([f"  • {g['group_name']}" for g in groups[:10]])
     if len(groups) > 10:
         group_list += f"\n  ... +{len(groups)-10} ta"
+    
+    display_groups = group_list if group_list else "  (hali yo'q)"
+
     await message.answer(
         f"📊 <b>Bot Statistikasi</b>\n\n"
         f"👥 Foydalanuvchilar: <b>{stats['users']}</b>\n"
         f"🏠 Aktiv guruhlar: <b>{stats['groups']}</b>\n"
         f"🔗 Jami referal: <b>{stats['referrals']}</b>\n\n"
-        f"🏠 <b>Guruhlar:</b>\n{group_list or '  (hali yo\'q)'}",
+        f"🏠 <b>Guruhlar:</b>\n{display_groups}",
         parse_mode="HTML"
     )
 
