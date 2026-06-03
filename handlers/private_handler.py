@@ -162,6 +162,12 @@ async def cmd_stats_private(message: Message, bot: Bot):
     await message.answer(text, parse_mode="HTML")
 
 
+@router.message(Command("myid"), F.chat.type == "private")
+async def cmd_myid(message: Message):
+    """User Telegram ID sini qaytaradi"""
+    await message.answer(f"🆔 Sizning Telegram ID: <code>{message.from_user.id}</code>", parse_mode="HTML")
+
+
 # ─────────────── CALLBACK ───────────────
 
 @router.callback_query(F.data == "my_status")
