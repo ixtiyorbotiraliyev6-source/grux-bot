@@ -27,12 +27,13 @@ async def get_req() -> int:
 @router.message(CommandStart(), F.chat.type == "private")
 async def cmd_start(message: Message, bot: Bot, command: CommandObject):
     """
-    /start — Botni ishga tushirish
-    /start ref_123456 — Referal orqali kirish
+    /start — Botni ishga tushirish (Guruh admini yoki ixtiyoriy foydalanuvchi)
+    /start ref_123456 — Referal orqali kirish (Guruh a'zosi)
     """
     user = message.from_user
     args = command.args  # "ref_123456" yoki None
     req = await get_req()
+    bot_info = await bot.get_me()
 
     # Foydalanuvchini bazaga qo'shish
     referred_by = None
@@ -73,25 +74,56 @@ async def cmd_start(message: Message, bot: Bot, command: CommandObject):
             except Exception:
                 pass
 
-    bot_info = await bot.get_me()
     invite_link = f"https://t.me/{bot_info.username}?start=ref_{user.id}"
 
-    text = MESSAGES["welcome"].format(
-        name=user.full_name,
-        required=req,
-        invite_link=invite_link,
-    )
+    if args and args.startswith("ref_"):
+        # 1. Taklif havolasi orqali kirgan guruh a'zosi uchun:
+        text = MESSAGES["welcome"].format(
+            name=user.full_name,
+            required=req,
+            invite_link=invite_link,
+        )
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="📊 Mening holatim",
+                callback_data="my_status"
+            )],
+            [InlineKeyboardButton(
+                text="🔗 Taklif havolasi",
+                callback_data="get_invite"
+            )],
+        ])
+    else:
+        # 2. Botni o'zi izlab topib kirgan guruh adminlari / boshqalar uchun:
+        text = (
+            f"👋 Salom, <b>{user.full_name}</b>!\n\n"
+            f"🤖 <b>Bu guruhlarni boshqarish va majburiy faollik (odam qo'shish) boti!</b>\n\n"
+            f"<b>Bot nimalar qila oladi?</b>\n"
+            f"📢 <b>Majburiy obuna</b>: Guruh a'zolari kanallaringizga obuna bo'lmasa guruhda yozolmaydi.\n"
+            f"👥 <b>Taklif tizimi</b>: A'zolar guruhga odam qo'shmaguncha (to'g'ridan-to'g'ri yoki taklif havolasi orqali) guruhda yozolmaydi.\n"
+            f"🔗 <b>Reklama/Link filtri</b>: Guruhdagi har qanday havola, kontakt va reklama so'zlarni o'chiradi.\n"
+            f"🧹 <b>Kirdi-chiqdi xabarlari</b>: Guruhdagi 'falonchi kirdi', 'pistonchi chiqdi' xabarlarini tozalaydi.\n\n"
+            f"⚙️ <b>Botni guruhingizga ulash tartibi:</b>\n"
+            f"1️⃣ Botni guruhingizga a'zo qiling.\n"
+            f"2️⃣ Botga guruhda <b>Administrator</b> huquqini bering va **xabarlarni o'chirish (Delete messages)** huquqini yoqing.\n"
+            f"3️⃣ Bot guruhda yozilgan ilk xabardanoq uni avtomatik ro'yxatga oladi va himoya ishga tushadi.\n\n"
+            f"<i>💡 Sozlamalarni o'zgartirish (/admin buyrug'i) faqat bot asosiy admini tomonidan amalga oshiriladi.</i>"
+        )
+        
+        from config import ADMIN_IDS
+        if user.id in ADMIN_IDS:
+            text += "\n\n👑 <b>Siz bot adminisiz! Sozlamalarni boshqarish:</b> /admin"
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="📊 Mening holatim",
-            callback_data="my_status"
-        )],
-        [InlineKeyboardButton(
-            text="🔗 Taklif havolasi",
-            callback_data="get_invite"
-        )],
-    ])
+        keyboard = InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(
+                text="➕ Botni guruhga qo'shish",
+                url=f"https://t.me/{bot_info.username}?startgroup=true"
+            )],
+            [InlineKeyboardButton(
+                text="📊 Mening holatim (A'zolar uchun)",
+                callback_data="my_status"
+            )]
+        ])
 
     await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
 
