@@ -51,10 +51,39 @@ async def set_bot_commands(bot: Bot):
     await bot.set_my_commands(group_commands, scope=BotCommandScopeAllGroupChats())
 
 
+async def dummy_handler(reader, writer):
+    try:
+        data = await reader.read(100)
+        response = "HTTP/1.1 200 OK\r\nContent-Length: 15\r\nContent-Type: text/plain\r\nConnection: close\r\n\r\nBot is running!"
+        writer.write(response.encode())
+        await writer.drain()
+        writer.close()
+        await writer.wait_closed()
+    except Exception:
+        pass
+
+
+async def start_dummy_server():
+    import os
+    port = int(os.environ.get("PORT", 8080))
+    try:
+        server = await asyncio.start_server(dummy_handler, '0.0.0.0', port)
+        logger.info(f"☕ Dummy HTTP server ishga tushdi: port {port}")
+        # Serverni fonda umrbod ishlatish
+        asyncio.create_task(server.serve_forever())
+    except Exception as e:
+        logger.error(f"❌ Dummy serverni ishga tushirib bo'lmadi: {e}")
+
+
 async def on_startup(bot: Bot):
     """Bot ishga tushganda bajariladigan amallar"""
     await db.init_db()
     await set_bot_commands(bot)
+
+    # Render.com port ulanishi uchun dummy serverni yoqish
+    import os
+    if os.environ.get("PORT"):
+        await start_dummy_server()
 
     bot_info = await bot.get_me()
     logger.info(f"✅ Bot ishga tushdi: @{bot_info.username}")
