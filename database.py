@@ -9,6 +9,14 @@ if IS_POSTGRES:
     import asyncpg
 
 
+async def get_pg_conn():
+    """asyncpg uchun PostgreSQL ulanishini yaratadi (sslmode muammosini hal qiladi)"""
+    clean_url = DATABASE_URL
+    if "?" in clean_url:
+        clean_url = clean_url.split("?", 1)[0]
+    return await asyncpg.connect(clean_url, ssl='require')
+
+
 def translate_query(query: str) -> str:
     """SQLite so'rovlarini PostgreSQL formatiga o'zgartiradi"""
     # 1. ? belgilarini $1, $2, $3 ga almashtirish
@@ -35,7 +43,7 @@ def translate_query(query: str) -> str:
 
 async def init_db():
     if IS_POSTGRES:
-        conn = await asyncpg.connect(DATABASE_URL)
+        conn = await get_pg_conn()
         try:
             await conn.execute("""
                 CREATE TABLE IF NOT EXISTS users (
@@ -138,7 +146,7 @@ async def init_db():
 
 async def get_setting(key: str) -> str:
     if IS_POSTGRES:
-        conn = await asyncpg.connect(DATABASE_URL)
+        conn = await get_pg_conn()
         try:
             val = await conn.fetchval("SELECT value FROM settings WHERE key = $1", key)
             return val if val else "0"
@@ -153,7 +161,7 @@ async def get_setting(key: str) -> str:
 
 async def set_setting(key: str, value: str):
     if IS_POSTGRES:
-        conn = await asyncpg.connect(DATABASE_URL)
+        conn = await get_pg_conn()
         try:
             await conn.execute(
                 "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value",
@@ -176,7 +184,7 @@ async def toggle_setting(key: str) -> bool:
 
 async def get_all_settings() -> dict:
     if IS_POSTGRES:
-        conn = await asyncpg.connect(DATABASE_URL)
+        conn = await get_pg_conn()
         try:
             rows = await conn.fetch("SELECT key, value FROM settings")
             return {r["key"]: r["value"] for r in rows}
@@ -193,7 +201,7 @@ async def get_all_settings() -> dict:
 
 async def get_user(user_id: int) -> dict | None:
     if IS_POSTGRES:
-        conn = await asyncpg.connect(DATABASE_URL)
+        conn = await get_pg_conn()
         try:
             row = await conn.fetchrow("SELECT * FROM users WHERE user_id = $1", user_id)
             return dict(row) if row else None
@@ -209,7 +217,7 @@ async def get_user(user_id: int) -> dict | None:
 
 async def add_user(user_id: int, username: str, full_name: str, referred_by: int = None):
     if IS_POSTGRES:
-        conn = await asyncpg.connect(DATABASE_URL)
+        conn = await get_pg_conn()
         try:
             await conn.execute(
                 "INSERT INTO users (user_id, username, full_name, referred_by) VALUES ($1, $2, $3, $4) ON CONFLICT (user_id) DO NOTHING",
@@ -228,7 +236,7 @@ async def add_user(user_id: int, username: str, full_name: str, referred_by: int
 
 async def get_referral_count(user_id: int) -> int:
     if IS_POSTGRES:
-        conn = await asyncpg.connect(DATABASE_URL)
+        conn = await get_pg_conn()
         try:
             val = await conn.fetchval("SELECT referral_count FROM users WHERE user_id = $1", user_id)
             return val if val is not None else 0
@@ -243,7 +251,7 @@ async def get_referral_count(user_id: int) -> int:
 
 async def increment_referral(referrer_id: int, referred_id: int) -> bool:
     if IS_POSTGRES:
-        conn = await asyncpg.connect(DATABASE_URL)
+        conn = await get_pg_conn()
         try:
             async with conn.transaction():
                 # Referalni qo'shish (agar avval qo'shilmagan bo'lsa)
@@ -280,7 +288,7 @@ async def increment_referral(referrer_id: int, referred_id: int) -> bool:
 
 async def get_all_users() -> list[dict]:
     if IS_POSTGRES:
-        conn = await asyncpg.connect(DATABASE_URL)
+        conn = await get_pg_conn()
         try:
             rows = await conn.fetch("SELECT * FROM users")
             return [dict(r) for r in rows]
@@ -298,7 +306,7 @@ async def get_all_users() -> list[dict]:
 
 async def add_group(group_id: int, group_name: str):
     if IS_POSTGRES:
-        conn = await asyncpg.connect(DATABASE_URL)
+        conn = await get_pg_conn()
         try:
             await conn.execute(
                 "INSERT INTO groups (group_id, group_name, is_active) VALUES ($1, $2, 1) ON CONFLICT (group_id) DO UPDATE SET group_name = EXCLUDED.group_name, is_active = 1",
@@ -314,7 +322,7 @@ async def add_group(group_id: int, group_name: str):
 
 async def remove_group(group_id: int):
     if IS_POSTGRES:
-        conn = await asyncpg.connect(DATABASE_URL)
+        conn = await get_pg_conn()
         try:
             await conn.execute("UPDATE groups SET is_active = 0 WHERE group_id = $1", group_id)
         finally:
@@ -327,7 +335,7 @@ async def remove_group(group_id: int):
 
 async def get_active_groups() -> list[dict]:
     if IS_POSTGRES:
-        conn = await asyncpg.connect(DATABASE_URL)
+        conn = await get_pg_conn()
         try:
             rows = await conn.fetch("SELECT * FROM groups WHERE is_active = 1")
             return [dict(r) for r in rows]
@@ -343,7 +351,7 @@ async def get_active_groups() -> list[dict]:
 
 async def get_stats() -> dict:
     if IS_POSTGRES:
-        conn = await asyncpg.connect(DATABASE_URL)
+        conn = await get_pg_conn()
         try:
             users = await conn.fetchval("SELECT COUNT(*) FROM users")
             groups = await conn.fetchval("SELECT COUNT(*) FROM groups WHERE is_active = 1")
