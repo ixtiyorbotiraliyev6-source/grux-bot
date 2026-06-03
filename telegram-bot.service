@@ -1,0 +1,15 @@
+[Unit]
+Description=Telegram Guruh Bot (@guruhlar_gamajbur_bot)
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/ubuntu/telegram-bot
+ExecStart=/usr/bin/python3 bot.py
+Restart=always
+RestartSec=10
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

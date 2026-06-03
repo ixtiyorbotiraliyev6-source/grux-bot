@@ -1,0 +1,6 @@
+bot.db
+bot.log
+__pycache__/
+*.pyc
+.env
+write_handler.py
