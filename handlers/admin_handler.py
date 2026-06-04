@@ -312,3 +312,23 @@ async def cb_admin_refresh(call: CallbackQuery):
         await call.answer("✅ Yangilandi")
     except Exception:
         await call.answer("Hech narsa o'zgarmadi")
+
+
+@router.message(Command("groups"), F.chat.type == "private")
+async def cmd_groups_list(message: Message):
+    """Bot ulangan barcha guruhlar ro'yxatini ko'rsatish"""
+    if not is_admin(message.from_user.id):
+        return
+    groups = await db.get_active_groups()
+    if not groups:
+        await message.answer("Tizimda hali birorta ham aktiv guruh yo'q.")
+        return
+
+    text = f"🏠 <b>Bot ulangan aktiv guruhlar ro'yxati (Jami: {len(groups)} ta):</b>\n\n"
+    for i, g in enumerate(groups, 1):
+        text += f"{i}. <b>{g['group_name']}</b> (ID: <code>{g['group_id']}</code>)\n"
+
+    if len(text) > 4000:
+        text = text[:4000] + "\n... (ro'yxat juda uzun)"
+
+    await message.answer(text, parse_mode="HTML")
