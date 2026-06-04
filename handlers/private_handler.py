@@ -97,17 +97,24 @@ async def cmd_start(message: Message, bot: Bot, command: CommandObject):
         # 2. Botni o'zi izlab topib kirgan guruh adminlari / boshqalar uchun:
         text = (
             f"👋 Salom, <b>{user.full_name}</b>!\n\n"
-            f"🤖 <b>Bu guruhlarni boshqarish va majburiy faollik (odam qo'shish) boti!</b>\n\n"
+            f"🤖 <b>Bu guruhlarni boshqarish, xavfsizlik va majburiy faollik (odam qo'shish) boti!</b>\n\n"
             f"<b>Bot nimalar qila oladi?</b>\n"
-            f"📢 <b>Majburiy obuna</b>: Guruh a'zolari kanallaringizga obuna bo'lmasa guruhda yozolmaydi.\n"
-            f"👥 <b>Taklif tizimi</b>: A'zolar guruhga odam qo'shmaguncha (to'g'ridan-to'g'ri yoki taklif havolasi orqali) guruhda yozolmaydi.\n"
-            f"🔗 <b>Reklama/Link filtri</b>: Guruhdagi har qanday havola, kontakt va reklama so'zlarni o'chiradi.\n"
-            f"🧹 <b>Kirdi-chiqdi xabarlari</b>: Guruhdagi 'falonchi kirdi', 'pistonchi chiqdi' xabarlarini tozalaydi.\n\n"
+            f"📢 <b>Majburiy obuna</b>: A'zolar belgilangan kanallarga obuna bo'lmasa guruhda yozolmaydi.\n"
+            f"👥 <b>Taklif tizimi</b>: A'zolar guruhga ma'lum miqdorda odam qo'shmaguncha yozolmaydi.\n"
+            f"🔗 <b>Reklama/Link filtri</b>: Guruhdagi har qanday link va reklamalarni o'chiradi.\n"
+            f"🧹 <b>Kirdi-chiqdi xabarlari</b>: Guruhdagi 'falonchi qo'shildi' kabi servis xabarlarini o'chiradi.\n"
+            f"🤖 <b>Kaptcha (Anti-bot)</b>: Yangi kirgan a'zo 60 soniyada robot emasligini tasdiqlamasa guruhdan chiqariladi.\n"
+            f"⚡ <b>Anti-Flood</b>: Guruhda ketma-ket juda tez yozganlarni 10 daqiqaga bloklaydi.\n\n"
+            f"ℹ️ <b>Majburiy obuna qanday ishlaydi?</b>\n"
+            f"1. Bosh admin (Siz) kod sozlamalarida kerakli kanallarni belgilaysiz.\n"
+            f"2. Guruh admini o'z guruhida obuna tekshirishni yoqadi.\n"
+            f"3. A'zo yozganida bot uning kanallardagi a'zoligini tekshiradi.\n"
+            f"4. Obuna bo'lmagan bo'lsa, xabari o'chirilib, uning shaxsiy xabariga kanallarga o'tish tugmalari yuboriladi. Guruhda esa vaqtinchalik ogohlantirish qoladi.\n\n"
             f"⚙️ <b>Botni guruhingizga ulash tartibi:</b>\n"
             f"1️⃣ Botni guruhingizga a'zo qiling.\n"
-            f"2️⃣ Botga guruhda <b>Administrator</b> huquqini bering va **xabarlarni o'chirish (Delete messages)** huquqini yoqing.\n"
-            f"3️⃣ Bot guruhda yozilgan ilk xabardanoq uni avtomatik ro'yxatga oladi va himoya ishga tushadi.\n\n"
-            f"<i>💡 Sozlamalarni o'zgartirish (/admin buyrug'i) faqat bot asosiy admini tomonidan amalga oshiriladi.</i>"
+            f"2️⃣ Botga guruhda <b>Administrator</b> huquqini bering va <b>xabarlarni o'chirish (Delete messages)</b> huquqini yoqing.\n"
+            f"3️⃣ Bot guruhda yozilgan ilk xabardanoq uni avtomatik ro'yxatga oladi.\n\n"
+            f"<i>💡 Guruh sozlamalarini boshqarish uchun guruh ichida <b>/settings</b> deb yozing.</i>"
         )
         
         from config import ADMIN_IDS
