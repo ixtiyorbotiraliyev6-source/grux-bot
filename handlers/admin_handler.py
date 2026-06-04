@@ -23,6 +23,7 @@ def is_admin(user_id: int) -> bool:
 class BroadcastState(StatesGroup):
     waiting_message = State()
 
+
 class SetRefState(StatesGroup):
     waiting_number = State()
 
@@ -53,23 +54,37 @@ async def build_admin_keyboard() -> InlineKeyboardMarkup:
             InlineKeyboardButton(text="📊 Statistika", callback_data="admin_stats"),
         ],
         [
+            InlineKeyboardButton(text="🏠 Guruhlar ro'yxati", callback_data="admin_groups_list"),
+        ],
+        [
             InlineKeyboardButton(text="🔄 Yangilash", callback_data="admin_refresh"),
         ]
     ])
 
 
-async def build_admin_text() -> str:
+async def build_admin_text(bot: Bot) -> str:
     stats = await db.get_stats()
     s = await db.get_all_settings()
 
     def status(key): return "✅ Yoqilgan" if s.get(key) == "1" else "❌ O'chirilgan"
 
+    # Guruhlar a'zolarini hisoblash
+    groups = await db.get_active_groups()
+    total_audience = 0
+    for g in groups:
+        try:
+            count = await bot.get_chat_member_count(g["group_id"])
+            total_audience += count
+        except Exception:
+            pass
+
     return (
         f"👑 <b>Admin Panel</b>\n\n"
         f"📊 <b>Statistika:</b>\n"
-        f"  👥 Foydalanuvchilar: <b>{stats['users']}</b>\n"
-        f"  🏠 Guruhlar: <b>{stats['groups']}</b>\n"
-        f"  🔗 Referal: <b>{stats['referrals']}</b>\n\n"
+        f"  👥 Bot a'zolari: <b>{stats['users']}</b> ta\n"
+        f"  🏠 Guruhlar soni: <b>{stats['groups']}</b> ta\n"
+        f"  📣 Auditoriya qamrovi: <b>{total_audience}</b> ta a'zo 📈\n"
+        f"  🔗 Jami referal: <b>{stats['referrals']}</b> ta\n\n"
         f"⚙️ <b>Funksiyalar:</b>\n"
         f"  📢 Majburiy obuna: {status('sub_check')}\n"
         f"  👥 Taklif tizimi: {status('ref_check')} ({s.get('ref_count','5')} ta)\n"
@@ -86,7 +101,7 @@ async def cmd_admin(message: Message):
     if not is_admin(message.from_user.id):
         await message.answer("⛔ Ruxsat yo'q!")
         return
-    text = await build_admin_text()
+    text = await build_admin_text(message.bot)
     keyboard = await build_admin_keyboard()
     await message.answer(text, parse_mode="HTML", reply_markup=keyboard)
 
@@ -112,7 +127,7 @@ async def cb_toggle(call: CallbackQuery):
     await call.answer(f"{labels.get(key, key)}: {state_text}", show_alert=False)
 
     try:
-        text = await build_admin_text()
+        text = await build_admin_text(call.bot)
         keyboard = await build_admin_keyboard()
         await call.message.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
     except Exception:
@@ -152,7 +167,7 @@ async def process_set_ref(message: Message, state: FSMContext):
     await db.set_setting("ref_count", str(n))
     await state.clear()
 
-    text = await build_admin_text()
+    text = await build_admin_text(message.bot)
     keyboard = await build_admin_keyboard()
     await message.answer(
         f"✅ Taklif soni <b>{n}</b> ga o'zgartirildi!",
@@ -259,15 +274,12 @@ async def cmd_astats(message: Message):
     group_list = "\n".join([f"  • {g['group_name']}" for g in groups[:10]])
     if len(groups) > 10:
         group_list += f"\n  ... +{len(groups)-10} ta"
-    
-    display_groups = group_list if group_list else "  (hali yo'q)"
-
     await message.answer(
         f"📊 <b>Bot Statistikasi</b>\n\n"
         f"👥 Foydalanuvchilar: <b>{stats['users']}</b>\n"
         f"🏠 Aktiv guruhlar: <b>{stats['groups']}</b>\n"
         f"🔗 Jami referal: <b>{stats['referrals']}</b>\n\n"
-        f"🏠 <b>Guruhlar:</b>\n{display_groups}",
+        f"🏠 <b>Guruhlar:</b>\n{group_list or '  (hali yo\'q)'}",
         parse_mode="HTML"
     )
 
@@ -306,7 +318,7 @@ async def cb_admin_refresh(call: CallbackQuery):
     if not is_admin(call.from_user.id):
         return
     try:
-        text = await build_admin_text()
+        text = await build_admin_text(call.bot)
         keyboard = await build_admin_keyboard()
         await call.message.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
         await call.answer("✅ Yangilandi")
@@ -332,3 +344,48 @@ async def cmd_groups_list(message: Message):
         text = text[:4000] + "\n... (ro'yxat juda uzun)"
 
     await message.answer(text, parse_mode="HTML")
+
+
+@router.callback_query(F.data == "admin_groups_list")
+async def cb_admin_groups_list(call: CallbackQuery, bot: Bot):
+    """Admin panel orqali guruhlar ro'yxati va ulardagi a'zolar sonini ko'rish"""
+    if not is_admin(call.from_user.id):
+        return
+    groups = await db.get_active_groups()
+    if not groups:
+        await call.message.edit_text(
+            "Tizimda hali birorta ham aktiv guruh yo'q.",
+            reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(text="⬅️ Orqaga", callback_data="admin_refresh")]
+            ])
+        )
+        await call.answer()
+        return
+
+    await call.answer("Guruhlar tahlil qilinmoqda...")
+
+    text = "🏠 <b>Faol guruhlar va a'zolar soni:</b>\n\n"
+    total_audience = 0
+    for i, g in enumerate(groups, 1):
+        try:
+            m_count = await bot.get_chat_member_count(g["group_id"])
+            total_audience += m_count
+            members_str = f"({m_count} ta a'zo)"
+        except Exception:
+            members_str = "(aniqlab bo'lmadi)"
+
+        text += f"{i}. <b>{g['group_name']}</b> {members_str}\n   ID: <code>{g['group_id']}</code>\n"
+
+    text += f"\n📊 <b>Jami guruhlar: {len(groups)} ta</b>\n"
+    text += f"📣 <b>Umumiy auditoriya: {total_audience} ta a'zo</b>\n"
+
+    if len(text) > 4000:
+        text = text[:4000] + "\n... (ro'yxat juda uzun)"
+
+    await call.message.edit_text(
+        text,
+        parse_mode="HTML",
+        reply_markup=InlineKeyboardMarkup(inline_keyboard=[
+            [InlineKeyboardButton(text="⬅️ Orqaga", callback_data="admin_refresh")]
+        ])
+    )
