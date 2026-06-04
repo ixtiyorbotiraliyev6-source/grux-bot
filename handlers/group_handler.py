@@ -1,9 +1,11 @@
 import asyncio
 import re
+import time
 from aiogram import Router, Bot, F
 from aiogram.types import (
     Message, ChatMemberUpdated,
-    InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery
+    InlineKeyboardMarkup, InlineKeyboardButton, CallbackQuery,
+    ChatPermissions
 )
 from aiogram.filters import ChatMemberUpdatedFilter, JOIN_TRANSITION, Command
 import database as db
@@ -11,6 +13,10 @@ from subscription import check_subscription
 from config import REQUIRED_CHANNELS, ADMIN_IDS
 
 router = Router()
+
+# Captcha va Anti-Flood uchun xotiradagi o'zgaruvchilar (in-memory)
+active_captchas = {}  # (chat_id, user_id) -> asyncio.Task
+user_messages = {}    # (chat_id, user_id) -> [timestamps]
 
 
 async def get_req(group_id: int) -> int:
@@ -75,6 +81,28 @@ SERVICE = {
 }
 
 
+async def captcha_timeout(bot: Bot, chat_id: int, user_id: int, welcome_msg_id: int, full_name: str):
+    """Kaptcha vaqti tugaganda foydalanuvchini guruhdan kick qilish"""
+    await asyncio.sleep(60)
+    key = (chat_id, user_id)
+    if key in active_captchas:
+        del active_captchas[key]
+        try:
+            # Guruhdan kick qilish (ban qilib so'ng darhol unban qilish orqali)
+            await bot.ban_chat_member(chat_id, user_id)
+            await bot.unban_chat_member(chat_id, user_id)
+            # Welcome xabarni o'chirish
+            await bot.delete_message(chat_id, welcome_msg_id)
+            # Guruhda vaqtinchalik xabar qoldirish
+            asyncio.create_task(temp_msg(
+                bot, chat_id,
+                f"⚠️ <b>{full_name}</b> robot emasligini tasdiqlay olmadi va guruhdan chiqarib yuborildi.",
+                15
+            ))
+        except Exception:
+            pass
+
+
 @router.message(F.content_type.in_(SERVICE))
 async def del_service(message: Message):
     if await db.get_group_setting(message.chat.id, "join_cleaner") != "1":
@@ -129,6 +157,25 @@ async def on_join(event: ChatMemberUpdated, bot: Bot):
 
     sub_on = await db.get_group_setting(chat_id, "sub_check") == "1"
     ref_on = await db.get_group_setting(chat_id, "ref_check") == "1"
+    captcha_on = await db.get_group_setting(chat_id, "captcha") == "1"
+    
+    # ─── KAPTCHA (ANTI-BOT) YOQILGAN BO'LSA ───
+    if captcha_on:
+        try:
+            # A'zoning yozish huquqini cheklash (Mute qilish)
+            await bot.restrict_chat_member(
+                chat_id, new_user.id,
+                permissions=ChatPermissions(
+                    can_send_messages=False,
+                    can_send_media_messages=False,
+                    can_send_polls=False,
+                    can_send_other_messages=False,
+                    can_add_web_page_previews=False
+                )
+            )
+        except Exception:
+            pass
+
     steps = []
     if sub_on and REQUIRED_CHANNELS:
         ch_links = " | ".join(
@@ -143,6 +190,10 @@ async def on_join(event: ChatMemberUpdated, bot: Bot):
             "   - Yoki havola orqali taklif qiling:\n"
             "   <code>" + invite_link + "</code>"
         )
+        
+    if captcha_on:
+        steps.append("⚠️ <b>Robot emasligingizni tasdiqlang!</b>\n   Pastdagi tasdiqlash tugmasini 60 soniyada bosing, aks holda guruhdan chiqarilasiz.")
+
     if steps:
         body = "\n\n".join(steps)
         text = (
@@ -151,20 +202,34 @@ async def on_join(event: ChatMemberUpdated, bot: Bot):
             "<b>Guruhda yozish uchun:</b>\n\n" + body + "\n\n"
             "Shartlar bajarilib bo'lgach yozishingiz mumkin!"
         )
-        kb = InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(
-                text="Botni ishga tushirish",
-                url="https://t.me/" + bot_info.username + "?start=ref_" + str(new_user.id)
-            )
-        ]])
+        
+        inline_buttons = []
+        if captcha_on:
+            inline_buttons.append([InlineKeyboardButton(
+                text="🤖 Men robot emasman",
+                callback_data=f"verify:{new_user.id}:{chat_id}"
+            )])
+        inline_buttons.append([InlineKeyboardButton(
+            text="Botni ishga tushirish",
+            url="https://t.me/" + bot_info.username + "?start=ref_" + str(new_user.id)
+        )])
+        kb = InlineKeyboardMarkup(inline_keyboard=inline_buttons)
     else:
         text = (
             "<a href=\"tg://user?id=" + str(new_user.id) + "\">" + new_user.full_name + "</a>"
             " guruhga xush kelibsiz!"
         )
         kb = None
+        
     try:
-        await bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=kb)
+        welcome_msg = await bot.send_message(chat_id, text, parse_mode="HTML", reply_markup=kb)
+        # Agar kaptcha yoqilgan bo'lsa, vaqtni hisoblashni boshlaymiz
+        if captcha_on and welcome_msg:
+            key = (chat_id, new_user.id)
+            task = asyncio.create_task(
+                captcha_timeout(bot, chat_id, new_user.id, welcome_msg.message_id, new_user.full_name)
+            )
+            active_captchas[key] = task
     except Exception:
         pass
 
@@ -186,6 +251,34 @@ async def msg_filter(message: Message, bot: Bot):
             return
     except Exception:
         pass
+
+    # ─── ANTI-FLOOD (TEZKOR YOZISHDAN HIMOYA) ───
+    if await db.get_group_setting(message.chat.id, "antiflood") == "1":
+        key = (message.chat.id, user.id)
+        now = time.time()
+        if key not in user_messages:
+            user_messages[key] = []
+        
+        # O'tgan xabarlar vaqtini qo'shish va 3 soniyadan eskilarni tozalash
+        user_messages[key].append(now)
+        user_messages[key] = [t for t in user_messages[key] if now - t <= 3]
+        
+        if len(user_messages[key]) > 5:
+            # 10 daqiqaga mute qilish (600 soniya)
+            until_date = int(now + 600)
+            try:
+                await bot.restrict_chat_member(
+                    message.chat.id, user.id,
+                    permissions=ChatPermissions(can_send_messages=False),
+                    until_date=until_date
+                )
+                await message.reply(
+                    f"⛔ <b>Ketma-ket juda tez xabar yozganingiz uchun 10 daqiqaga guruhda yozishdan cheklindingiz! (Anti-Flood)</b>",
+                    parse_mode="HTML"
+                )
+            except Exception:
+                pass
+            return
 
     # Link/spam filtri (guruhga xos sozlama)
     if await db.get_group_setting(message.chat.id, "link_filter") == "1":
@@ -284,6 +377,46 @@ async def msg_filter(message: Message, bot: Bot):
             return
 
 
+@router.callback_query(F.data.startswith("verify:"))
+async def cb_verify(call: CallbackQuery, bot: Bot):
+    """Robot emaslikni tasdiqlash callbacki"""
+    parts = call.data.split(":")
+    user_id = int(parts[1])
+    chat_id = int(parts[2])
+
+    if call.from_user.id != user_id:
+        await call.answer("⛔ Bu tugma siz uchun emas! Siz o'zingiz yangi kirganingizda bosa olasiz.", show_alert=True)
+        return
+
+    key = (chat_id, user_id)
+    if key in active_captchas:
+        task = active_captchas[key]
+        task.cancel()
+        del active_captchas[key]
+
+    # Ruxsatlarni qaytarish (Unmute)
+    try:
+        await bot.restrict_chat_member(
+            chat_id, user_id,
+            permissions=ChatPermissions(
+                can_send_messages=True,
+                can_send_media_messages=True,
+                can_send_polls=True,
+                can_send_other_messages=True,
+                can_add_web_page_previews=True
+            )
+        )
+    except Exception:
+        pass
+
+    try:
+        await call.message.delete()
+    except Exception:
+        pass
+
+    await call.answer("✅ Robot emasligingiz tasdiqlandi! Guruhda yozishingiz mumkin.", show_alert=True)
+
+
 @router.callback_query(F.data.startswith("check_sub:"))
 async def cb_check_sub(call: CallbackQuery, bot: Bot):
     is_ok, not_subbed = await check_subscription(bot, call.from_user.id)
@@ -330,6 +463,8 @@ async def build_group_settings_keyboard(group_id: int) -> InlineKeyboardMarkup:
     link = await db.get_group_setting(group_id, "link_filter")
     clean = await db.get_group_setting(group_id, "join_cleaner")
     count = await db.get_group_setting(group_id, "ref_count")
+    captcha = await db.get_group_setting(group_id, "captcha")
+    antiflood = await db.get_group_setting(group_id, "antiflood")
 
     def ico(val): return "✅" if val == "1" else "❌"
 
@@ -341,6 +476,10 @@ async def build_group_settings_keyboard(group_id: int) -> InlineKeyboardMarkup:
         [
             InlineKeyboardButton(text=f"{ico(link)} Link/spam filtri", callback_data=f"gset:link_filter:{group_id}"),
             InlineKeyboardButton(text=f"{ico(clean)} Kirdi/chiqdi tozalash", callback_data=f"gset:join_cleaner:{group_id}"),
+        ],
+        [
+            InlineKeyboardButton(text=f"{ico(captcha)} Kaptcha (Anti-bot)", callback_data=f"gset:captcha:{group_id}"),
+            InlineKeyboardButton(text=f"{ico(antiflood)} Anti-Flood (Tez yozish)", callback_data=f"gset:antiflood:{group_id}"),
         ],
         [
             InlineKeyboardButton(text=f"👥 Taklif soni: {count} ta", callback_data=f"gset:set_count:{group_id}"),
@@ -420,7 +559,9 @@ async def cb_group_settings(call: CallbackQuery, bot: Bot):
             "sub_check": "Majburiy obuna",
             "ref_check": "Taklif tizimi",
             "link_filter": "Link/spam filtri",
-            "join_cleaner": "Kirdi/chiqdi tozalash"
+            "join_cleaner": "Kirdi/chiqdi tozalash",
+            "captcha": "Kaptcha (Anti-bot)",
+            "antiflood": "Anti-Flood"
         }
         status = "yoqildi" if new_val else "o'chirildi"
         await call.answer(f"{labels.get(key, key)} {status}!")
