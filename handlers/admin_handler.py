@@ -141,12 +141,15 @@ async def cb_set_ref_count(call: CallbackQuery, state: FSMContext):
     if not is_admin(call.from_user.id):
         return
     current = await db.get_setting("ref_count")
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="admin_cancel")]
+    ])
     await call.message.answer(
         f"👥 <b>Taklif sonini o'zgartirish</b>\n\n"
         f"Hozirgi son: <b>{current}</b>\n\n"
-        f"Yangi son yuboring (1–100):\n"
-        f"❌ Bekor qilish: /cancel",
-        parse_mode="HTML"
+        f"Yangi son yuboring (1–100):\n",
+        parse_mode="HTML",
+        reply_markup=kb
     )
     await state.set_state(SetRefState.waiting_number)
     await call.answer()
@@ -210,12 +213,15 @@ async def cmd_broadcast(message: Message, state: FSMContext):
     if not is_admin(message.from_user.id):
         return
     groups = await db.get_active_groups()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="admin_cancel")]
+    ])
     await message.answer(
         f"📢 <b>Broadcast</b>\n\n"
         f"Xabar <b>{len(groups)}</b> ta aktiv guruhga yuboriladi.\n"
-        f"Matn, rasm, video — hammasi qabul qilinadi.\n\n"
-        f"❌ Bekor qilish: /cancel",
-        parse_mode="HTML"
+        f"Matn, rasm, video — hammasi qabul qilinadi.\n",
+        parse_mode="HTML",
+        reply_markup=kb
     )
     await state.set_state(BroadcastState.waiting_message)
 
@@ -294,10 +300,14 @@ async def cb_admin_broadcast(call: CallbackQuery, state: FSMContext):
     if not is_admin(call.from_user.id):
         return
     groups = await db.get_active_groups()
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Bekor qilish", callback_data="admin_cancel")]
+    ])
     await call.message.answer(
         f"📢 Xabar <b>{len(groups)}</b> ta guruhga yuboriladi.\n"
-        f"Xabarni yuboring:\n\n❌ Bekor: /cancel",
-        parse_mode="HTML"
+        f"Xabarni yuboring:\n",
+        parse_mode="HTML",
+        reply_markup=kb
     )
     await state.set_state(BroadcastState.waiting_message)
     await call.answer()
@@ -327,6 +337,25 @@ async def cb_admin_refresh(call: CallbackQuery):
         await call.answer("✅ Yangilandi")
     except Exception:
         await call.answer("Hech narsa o'zgarmadi")
+
+
+@router.callback_query(F.data == "admin_cancel")
+async def cb_admin_cancel(call: CallbackQuery, state: FSMContext):
+    """Admin FSM holatini bekor qilish va bosh sahifaga qaytish"""
+    if not is_admin(call.from_user.id):
+        return
+    await state.clear()
+    text = await build_admin_text(call.bot)
+    keyboard = await build_admin_keyboard()
+    try:
+        await call.message.edit_text(text, parse_mode="HTML", reply_markup=keyboard)
+    except Exception:
+        await call.message.answer(text, parse_mode="HTML", reply_markup=keyboard)
+        try:
+            await call.message.delete()
+        except Exception:
+            pass
+    await call.answer("Bekor qilindi")
 
 
 async def get_group_link_html(bot: Bot, group_id: int, fallback_name: str) -> str:
