@@ -1,10 +1,12 @@
+import os
+
 # =============================================
 #   BOT KONFIGURATSIYASI - config.py
 #   Bu faylda barcha sozlamalar saqlanadi
 # =============================================
 
 # 🔑 BotFather dan olingan token
-BOT_TOKEN = "8562902038:AAEJn9Tp1bxpTSmaN5sVT6i_93CA1GdYazc"
+BOT_TOKEN = os.environ.get("BOT_TOKEN", "8562902038:AAGKQ2okAPbLRHnC1Hon9MkNEgQeZQOrGSQ")
 
 # 📢 Majburiy obuna kanallari (@ bilan yozing)
 # Foydalanuvchi shu kanallarga obuna bo'lmasa yoza olmaydi
