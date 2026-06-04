@@ -19,6 +19,23 @@ active_captchas = {}  # (chat_id, user_id) -> asyncio.Task
 user_messages = {}    # (chat_id, user_id) -> [timestamps]
 
 
+async def cleanup_user_messages():
+    """Anti-Flood uchun ishlatiladigan xabarlar xotirasini tozalab turadi (Memory leak oldini olish)"""
+    while True:
+        try:
+            await asyncio.sleep(300)  # Har 5 daqiqada
+            now = time.time()
+            keys_to_del = []
+            for key, timestamps in list(user_messages.items()):
+                if not timestamps or now - timestamps[-1] > 300:
+                    keys_to_del.append(key)
+            for key in keys_to_del:
+                user_messages.pop(key, None)
+        except Exception:
+            pass
+
+
+
 async def get_req(group_id: int) -> int:
     try:
         return int(await db.get_group_setting(group_id, "ref_count"))

@@ -80,6 +80,10 @@ async def on_startup(bot: Bot):
     await db.init_db()
     await set_bot_commands(bot)
 
+    # Anti-Flood tozalash vazifasini fonda ishga tushirish (xotirani tozalash uchun)
+    asyncio.create_task(group_handler.cleanup_user_messages())
+
+
     # Render.com port ulanishi uchun dummy serverni yoqish
     import os
     if os.environ.get("PORT"):
