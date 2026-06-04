@@ -329,6 +329,24 @@ async def cb_admin_refresh(call: CallbackQuery):
         await call.answer("Hech narsa o'zgarmadi")
 
 
+async def get_group_link_html(bot: Bot, group_id: int, fallback_name: str) -> str:
+    """Guruh uchun bosiladigan link (t.me yoki invite link) yaratadi"""
+    try:
+        chat = await bot.get_chat(group_id)
+        if chat.username:
+            return f"<a href='https://t.me/{chat.username}'>{fallback_name}</a>"
+        elif chat.invite_link:
+            return f"<a href='{chat.invite_link}'>{fallback_name}</a>"
+        else:
+            try:
+                link = await bot.export_chat_invite_link(group_id)
+                return f"<a href='{link}'>{fallback_name}</a>"
+            except Exception:
+                return f"<b>{fallback_name}</b>"
+    except Exception:
+        return f"<b>{fallback_name}</b>"
+
+
 @router.message(Command("groups"), F.chat.type == "private")
 async def cmd_groups_list(message: Message):
     """Bot ulangan barcha guruhlar ro'yxatini ko'rsatish"""
@@ -341,7 +359,8 @@ async def cmd_groups_list(message: Message):
 
     text = f"🏠 <b>Bot ulangan aktiv guruhlar ro'yxati (Jami: {len(groups)} ta):</b>\n\n"
     for i, g in enumerate(groups, 1):
-        text += f"{i}. <b>{g['group_name']}</b> (ID: <code>{g['group_id']}</code>)\n"
+        link_html = await get_group_link_html(message.bot, g["group_id"], g["group_name"])
+        text += f"{i}. {link_html} (ID: <code>{g['group_id']}</code>)\n"
 
     if len(text) > 4000:
         text = text[:4000] + "\n... (ro'yxat juda uzun)"
@@ -377,7 +396,8 @@ async def cb_admin_groups_list(call: CallbackQuery, bot: Bot):
         except Exception:
             members_str = "(aniqlab bo'lmadi)"
 
-        text += f"{i}. <b>{g['group_name']}</b> {members_str}\n   ID: <code>{g['group_id']}</code>\n"
+        link_html = await get_group_link_html(bot, g["group_id"], g["group_name"])
+        text += f"{i}. {link_html} {members_str}\n   ID: <code>{g['group_id']}</code>\n"
 
     text += f"\n📊 <b>Jami guruhlar: {len(groups)} ta</b>\n"
     text += f"📣 <b>Umumiy auditoriya: {total_audience} ta a'zo</b>\n"
